@@ -101,5 +101,14 @@ namespace Document.Conversion.Tests
 
         [Fact (Skip = "Prevent large uploads attacks")]
         public void Test_Large_Request_Size_Rejected() { }
+
+        [Fact(Skip = "Assert bad request with validation message")]
+        public void Test_Invalid_Accept_Header() { }
+
+        [Fact(Skip = "Assert bad request when malformed file is uploaded for conversion")]
+        public void Test_Malformed_Conversion_File() { }
+
+        [Fact(Skip = "Assert bad request when some request form data fields are not present")]
+        public void Test_Missing_File_Or_FileType() { }
     }
 }
