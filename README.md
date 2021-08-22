@@ -1,4 +1,4 @@
-# Notino homework implementation
+# Implementation
 
 Solution consists of  4 projects:
 
