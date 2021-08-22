@@ -1,8 +1,10 @@
+using System;
 using System.IO;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using Document.Conversion.DocumentStorage;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Newtonsoft.Json;
 using Xunit;
@@ -75,7 +77,8 @@ namespace Document.Conversion.Tests
             };
 
             const string fileName = "test.json";
-            var fullJsonFilePath = Path.Combine(Path.GetTempPath(), fileName);
+            var commonAppDataDirPath = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData, Environment.SpecialFolderOption.Create);
+            var fullJsonFilePath = Path.Combine(commonAppDataDirPath, FileDocumentStorage.FileStorageDirName);
             await File.WriteAllTextAsync(fullJsonFilePath, JsonConvert.SerializeObject(doc));
 
             using var multipartContent = new MultipartFormDataContent

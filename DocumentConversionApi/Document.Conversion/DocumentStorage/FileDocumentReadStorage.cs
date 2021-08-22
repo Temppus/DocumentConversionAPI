@@ -11,10 +11,14 @@ namespace Document.Conversion.DocumentStorage
     {
         private readonly string _baseDirPath;
 
+        public const string FileStorageDirName = "NotinoConversionFiles";
+
         public FileDocumentStorage()
         {
-            //TODO: Path should be injected
-            _baseDirPath = Path.GetTempPath();
+            //TODO: Path should be injected.
+
+            var commonAppDataDirPath = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData, Environment.SpecialFolderOption.Create);
+            _baseDirPath = Path.Combine(commonAppDataDirPath, FileStorageDirName);
         }
 
         public Task<Stream> LoadDocumentAsync(string source, CancellationToken cancellationToken)
