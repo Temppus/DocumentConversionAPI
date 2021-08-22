@@ -1,8 +1,8 @@
 ﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Document.Conversion.DocumentConversion;
-using DocumentConversionApi.Validation;
+using Document.Conversion.DocumentStorage;
+using DocumentConversionApi.DependencyInjection;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DocumentConversionApi.Controllers
@@ -11,36 +11,42 @@ namespace DocumentConversionApi.Controllers
     [Route("Document")]
     public class DocumentController : ControllerBase
     {
-        private readonly IDocumentDeserializer _documentDeserializer;
+        private readonly DocumentConverterServiceFactory _converterServiceFactory;
+        private readonly DocumentFileLoader _documentFileLoader;
 
-        public DocumentController(IDocumentDeserializer documentDeserializer)
+        public DocumentController(DocumentConverterServiceFactory converterServiceFactory, DocumentFileLoader documentFileLoader)
         {
-            _documentDeserializer =
-                documentDeserializer ?? throw new ArgumentNullException(nameof(documentDeserializer));
+            _converterServiceFactory = converterServiceFactory ?? throw new ArgumentNullException(nameof(converterServiceFactory));
+            _documentFileLoader = documentFileLoader ?? throw new ArgumentNullException(nameof(documentFileLoader));
         }
 
         [HttpPost("Convert")]
         [Produces("application/json", "application/xml")]
-        public async Task<IActionResult> ConvertAsync([FromForm] DocumentConvertRequest convertRequest,
-            CancellationToken cancellationToken)
+        public async Task<FileContentResult> ConvertAsync([FromForm] DocumentConvertRequest convertRequest, CancellationToken cancellationToken)
         {
-            await using var stream = convertRequest.File.OpenReadStream();
+            string fileContent;
 
-            Document.Conversion.Document doc;
-
-            switch (convertRequest.FileType)
+            if (convertRequest.File != null)
             {
-                case FileType.Json:
-                    doc = await _documentDeserializer.DeserializeFromJsonAsync(stream, cancellationToken);
-                    break;
-                case FileType.Xml:
-                    doc = await _documentDeserializer.DeserializeFromXmlAsync(stream, cancellationToken);
-                    break;
-                default:
-                    throw new FileValidationException($"Unsupported {nameof(FileType)}");
+                await using var stream = convertRequest.File.OpenReadStream();
+                fileContent = await _documentFileLoader.LoadFromStreamAsync(stream, cancellationToken);
+            }
+            else
+            {
+                fileContent = await _documentFileLoader.LoadDocumentFileAsync(convertRequest.InputFileProvider, convertRequest.FileSource, cancellationToken);
             }
 
-            return Ok(doc);
+            var documentConverterService = _converterServiceFactory.CreateDocumentConverterService(
+                convertRequest.InputFileType,
+                convertRequest.OutputFileType,
+                convertRequest.OutputFileProvider);
+
+            var convertedDocument = await documentConverterService.ConvertDocumentAsync(fileContent, convertRequest.Email, cancellationToken);
+            
+            return new FileContentResult(convertedDocument.Data, convertedDocument.ContentType)
+            {
+                FileDownloadName = convertedDocument.DocumentId,
+            };
         }
     }
 }

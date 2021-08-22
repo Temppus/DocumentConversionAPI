@@ -1,17 +1,19 @@
-﻿using Newtonsoft.Json;
-using System;
+﻿using System;
 using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
+using System.Text;
+using System.Xml;
 using System.Xml.Linq;
+using System.Xml.Serialization;
 
-namespace Document.Conversion.DocumentConversion
+namespace Document.Conversion.Serialization
 {
-    public class DocumentDeserializer : IDocumentDeserializer
+    public class XmlDocumentSerializer : IDocumentDeserializer, IDocumentSerializer
     {
-        public async Task<Document> DeserializeFromXmlAsync(Stream stream, CancellationToken cancellationToken)
+        private static readonly XmlSerializer XmlSerializer = new(typeof(Document));
+
+        public Document Deserialize(string document)
         {
-            var xDocument = await XDocument.LoadAsync(stream, LoadOptions.None, cancellationToken);
+            var xDocument = XDocument.Parse(document);
             var root = xDocument.Root;
 
             if (root == null)
@@ -40,12 +42,17 @@ namespace Document.Conversion.DocumentConversion
             return doc;
         }
 
-        public Task<Document> DeserializeFromJsonAsync(Stream stream, CancellationToken cancellationToken)
+        public SerializedFile SerializeDocument(Document document)
         {
-            using var streamReader = new StreamReader(stream);
-            using var jsonReader = new JsonTextReader(streamReader);
-            var serializer = new JsonSerializer();
-            return Task.FromResult(serializer.Deserialize<Document>(jsonReader));
+            using var stringWriter = new StringWriter();
+            using var writer = XmlWriter.Create(stringWriter);
+            XmlSerializer.Serialize(writer, document);
+
+            return new SerializedFile
+            {
+                ContentType = System.Net.Mime.MediaTypeNames.Application.Xml,
+                Data = Encoding.UTF8.GetBytes(stringWriter.ToString())
+            };
         }
     }
 }

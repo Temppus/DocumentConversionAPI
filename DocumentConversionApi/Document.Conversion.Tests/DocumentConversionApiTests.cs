@@ -1,3 +1,4 @@
+using System.IO;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
@@ -8,13 +9,13 @@ using Xunit;
 
 namespace Document.Conversion.Tests
 {
-    public class DocumentConversionTests : IClassFixture<WebApplicationFactory<DocumentConversionApi.Startup>>
+    public class DocumentConversionApiTests : IClassFixture<WebApplicationFactory<DocumentConversionApi.Startup>>
     {
         private const string ConvertUrl = "/Document/Convert";
 
         private readonly WebApplicationFactory<DocumentConversionApi.Startup> _factory;
 
-        public DocumentConversionTests(WebApplicationFactory<DocumentConversionApi.Startup> factory)
+        public DocumentConversionApiTests(WebApplicationFactory<DocumentConversionApi.Startup> factory)
         {
             _factory = factory;
         }
@@ -36,20 +37,66 @@ namespace Document.Conversion.Tests
             using var multipartContent = new MultipartFormDataContent();
 
             using var byteArrayContent = new ByteArrayContent(Encoding.UTF8.GetBytes(json));
-            byteArrayContent.Headers.Remove("Content-Type");
-            byteArrayContent.Headers.Add("Content-Type", "multipart/form-data; boundary=----WebKitFormBoundaryaYcxA3wAp5XMUV2w");
 
-            multipartContent.Add(new StringContent("json"), "FileType");
+            multipartContent.Add(new StringContent("json"), "InputFileType");
+            multipartContent.Add(new StringContent("xml"), "OutputFileType");
+
+            multipartContent.Add(new StringContent("file"), "OutputFileProvider");
             multipartContent.Add(byteArrayContent, "file", "test.json");
-            
+
             var request = new HttpRequestMessage(HttpMethod.Post, ConvertUrl)
             {
                 Content = multipartContent,
             };
 
-            request.Headers.Add("accept", "application/xml");
+            var response = await client.SendAsync(request);
+
+            response.EnsureSuccessStatusCode();
+
+            Assert.Equal("application/xml", response.Content.Headers.ContentType.MediaType);
+
+            var content = await response.Content.ReadAsStringAsync();
+            var responseDoc = XDocument.Parse(content);
+
+            Assert.Equal(doc.Title, responseDoc.Root.Element(nameof(Document.Title)).Value);
+            Assert.Equal(doc.Text, responseDoc.Root.Element(nameof(Document.Text)).Value);
+        }
+
+        [Fact]
+        public async Task Test_Json_File_Path_To_Xml_Conversion()
+        {
+            var options = new WebApplicationFactoryClientOptions();
+            using var client = _factory.CreateClient(options);
+
+            var doc = new Document
+            {
+                Title = "dummy temp file title",
+                Text = "text 123"
+            };
+
+            const string fileName = "test.json";
+            var fullJsonFilePath = Path.Combine(Path.GetTempPath(), fileName);
+            await File.WriteAllTextAsync(fullJsonFilePath, JsonConvert.SerializeObject(doc));
+
+            using var multipartContent = new MultipartFormDataContent
+            {
+                {new StringContent("json"), "InputFileType"},
+                {new StringContent("xml"), "OutputFileType"},
+
+                {new StringContent("file"), "InputFileProvider"},
+                {new StringContent(fileName), "FileSource"},
+
+                {new StringContent("file"), "OutputFileProvider"}
+            };
+
+            var request = new HttpRequestMessage(HttpMethod.Post, ConvertUrl)
+            {
+                Content = multipartContent,
+            };
 
             var response = await client.SendAsync(request);
+
+            File.Delete(fullJsonFilePath);
 
             response.EnsureSuccessStatusCode();
 
@@ -73,18 +120,17 @@ namespace Document.Conversion.Tests
             using var multipartContent = new MultipartFormDataContent();
             
             using var byteArrayContent = new ByteArrayContent(Encoding.UTF8.GetBytes(xml));
-            byteArrayContent.Headers.Remove("Content-Type");
-            byteArrayContent.Headers.Add("Content-Type", "multipart/form-data; boundary=----WebKitFormBoundaryaYcxA3wAp5XMUV2w");
 
-            multipartContent.Add(new StringContent("xml"), "FileType");
+            multipartContent.Add(new StringContent("xml"), "InputFileType");
+            multipartContent.Add(new StringContent("json"), "OutputFileType");
+
+            multipartContent.Add(new StringContent("file"), "OutputFileProvider");
             multipartContent.Add(byteArrayContent, "file", "test.xml");
 
             var request = new HttpRequestMessage(HttpMethod.Post, ConvertUrl)
             {
                 Content = multipartContent,
             };
-
-            request.Headers.Add("accept", "application/json");
 
             var response = await client.SendAsync(request);
             
@@ -99,16 +145,21 @@ namespace Document.Conversion.Tests
             Assert.Equal("Very descriptive text ...", responseDoc.Text);
         }
 
-        [Fact (Skip = "Prevent large uploads attacks")]
-        public void Test_Large_Request_Size_Rejected() { }
+        [Theory(Skip = "Prevent directory traversal attacks")]
+        [InlineData("some full path")]
+        [InlineData("relative path with ..\\ ../")]
+        public void Test_Directory_Traversal_File_Attacks(string filePath) { }
 
-        [Fact(Skip = "Assert bad request with validation message")]
-        public void Test_Invalid_Accept_Header() { }
+        [Fact (Skip = "Prevent large uploads attacks")]
+        public void Test_Large_Request_File_Size_Rejected() { }
+
+        [Fact(Skip = "Prevent large download attacks")]
+        public void Test_Large_Http_File_Download_Rejected() { }
 
         [Fact(Skip = "Assert bad request when malformed file is uploaded for conversion")]
         public void Test_Malformed_Conversion_File() { }
 
-        [Fact(Skip = "Assert bad request when some request form data fields are not present")]
+        [Fact(Skip = "Assert bad request when some mandatory request form data fields are not present")]
         public void Test_Missing_File_Or_FileType() { }
     }
 }
